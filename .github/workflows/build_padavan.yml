@@ -158,27 +158,44 @@ jobs:
           if not path.is_file():
               raise SystemExit(f"ERROR: {path} not found")
 
-          content = path.read_text()
+          lines = path.read_text().splitlines(keepends=True)
 
-          old = "touch aclocal.m4 ;\\"
-          new = "touch aclocal.m4 configure Makefile.in ;\\"
-
-          if new in content:
+          # 检查是否已经添加修复
+          if any("touch aclocal.m4 configure Makefile.in" in line for line in lines):
               print("dosfstools Autotools timestamp fix already applied")
-          elif old in content:
-              content = content.replace(old, new, 1)
-              path.write_text(content)
-              print("dosfstools Autotools timestamp fix updated")
           else:
-              raise SystemExit(
-                  "ERROR: previous dosfstools timestamp patch not found. "
-                  "Check trunk/user/dosfstools/Makefile"
-              )
-          PY
+              # 找到 configure 命令的最后一个参数
+              matches = [
+                  i for i, line in enumerate(lines)
+                  if "--build=$(HOST_BUILD)" in line
+              ]
 
-          echo "Checking generated Autotools files:"
-          cd trunk/user/dosfstools/dosfstools-4.2
-          ls -l aclocal.m4 configure Makefile.in
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"ERROR: expected exactly one --build=$(HOST_BUILD), "
+                      f"found {len(matches)}"
+                  )
+
+              # 在 configure 执行后插入 touch
+              index = matches[0] + 1
+              lines.insert(
+                  index,
+                  "\t\ttouch aclocal.m4 configure Makefile.in ;\\\n"
+              )
+
+              path.write_text("".join(lines))
+              print("dosfstools Autotools timestamp fix applied")
+
+          # 输出修改后的 configure 目标，供 Actions 日志核对
+          content = path.read_text()
+          start = content.find("\nconfigure:\n")
+          end = content.find("\nclean:\n", start)
+
+          if start < 0 or end < 0:
+              raise SystemExit("ERROR: cannot verify configure target")
+
+          print(content[start:end])
+          PY
 
       - name: Install Build Dependencies
         run: |
