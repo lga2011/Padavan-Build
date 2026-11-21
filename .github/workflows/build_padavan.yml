@@ -149,6 +149,33 @@ jobs:
         run: |
               echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
 
+      - name: Fix dosfstools aclocal timestamp
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("trunk/user/dosfstools/Makefile")
+          if not path.is_file():
+              raise SystemExit(f"ERROR: {path} not found")
+
+          content = path.read_text()
+
+          old = "\t( cd $(SRC_NAME) ;\\\n\t./configure \\"
+          new = "\t( cd $(SRC_NAME) ;\\\n\ttouch aclocal.m4 ;\\\n\t./configure \\"
+
+          if "touch aclocal.m4" in content:
+              print("dosfstools timestamp fix already applied")
+          elif old in content:
+              content = content.replace(old, new, 1)
+              path.write_text(content)
+              print("dosfstools timestamp fix applied")
+          else:
+              raise SystemExit(
+                  "ERROR: configure target does not match the expected source; "
+                  "Makefile was not modified."
+              )
+          PY
+
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
