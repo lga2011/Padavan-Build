@@ -149,7 +149,7 @@ jobs:
         run: |
               echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
 
-      - name: Fix dosfstools aclocal timestamp
+      - name: Fix dosfstools Autotools timestamps
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -160,21 +160,25 @@ jobs:
 
           content = path.read_text()
 
-          old = "\t( cd $(SRC_NAME) ;\\\n\t./configure \\"
-          new = "\t( cd $(SRC_NAME) ;\\\n\ttouch aclocal.m4 ;\\\n\t./configure \\"
+          old = "touch aclocal.m4 ;\\"
+          new = "touch aclocal.m4 configure Makefile.in ;\\"
 
-          if "touch aclocal.m4" in content:
-              print("dosfstools timestamp fix already applied")
+          if new in content:
+              print("dosfstools Autotools timestamp fix already applied")
           elif old in content:
               content = content.replace(old, new, 1)
               path.write_text(content)
-              print("dosfstools timestamp fix applied")
+              print("dosfstools Autotools timestamp fix updated")
           else:
               raise SystemExit(
-                  "ERROR: configure target does not match the expected source; "
-                  "Makefile was not modified."
+                  "ERROR: previous dosfstools timestamp patch not found. "
+                  "Check trunk/user/dosfstools/Makefile"
               )
           PY
+
+          echo "Checking generated Autotools files:"
+          cd trunk/user/dosfstools/dosfstools-4.2
+          ls -l aclocal.m4 configure Makefile.in
 
       - name: Install Build Dependencies
         run: |
