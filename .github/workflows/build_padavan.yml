@@ -292,6 +292,31 @@ jobs:
           print("patch rewritten for v0.107.48")
           PYEOF
 
+      - name: Fix strongswan musl if_arp conflict
+        run: |
+          python3 - <<'PYEOF'
+          import tarfile, io
+          p = "trunk/user/strongswan/strongswan-5.9.14.tar.bz2"
+          tf = tarfile.open(p, "r:bz2")
+          members, changed = [], 0
+          for m in tf.getmembers():
+              data = tf.extractfile(m).read() if m.isfile() else None
+              if data and m.name.endswith((".c", ".h")):
+                  new = data.replace(b"#include <linux/if_arp.h>",
+                                     b"#include <net/if_arp.h>")
+                  if new != data:
+                      data = new
+                      m.size = len(new)
+                      changed += 1
+                      print("fixed:", m.name)
+              members.append((m, data))
+          tf.close()
+          with tarfile.open(p, "w:bz2") as out:
+              for m, data in members:
+                  out.addfile(m, io.BytesIO(data) if data is not None else None)
+          print(f"done, {changed} file(s) fixed")
+          PYEOF
+
       - name: Build Firmware
         run: |
           make ${{ inputs.target }} TOOLCHAIN=${{ inputs.toolchain }}
