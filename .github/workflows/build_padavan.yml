@@ -148,6 +148,7 @@ jobs:
       - name: Fix CMake compatibility
         run: |
               echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
+
       - name: Fix dosfstools Autotools timestamps
         run: |
           python3 - <<'PY'
@@ -186,6 +187,7 @@ jobs:
               raise SystemExit("ERROR: cannot verify configure target")
           print(content[start:end])
           PY
+
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
@@ -193,10 +195,12 @@ jobs:
             bison flex gperf help2man libtool-bin texinfo python3-docutils autopoint gettext ccache \
             autoconf automake liblzma-dev libltdl-dev liblzo2-dev jq
           echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> $GITHUB_ENV
+
       - name: Validate Input JSON
         run: |
           jq empty <<< '${{ inputs.plugins }}' || { echo "❌ Invalid plugins JSON"; exit 1; }
           jq empty <<< '${{ inputs.customization }}' || { echo "❌ Invalid customization JSON"; exit 1; }
+
       - name: Export Customization & Plugin Flags
         run: |
           export_json() {
@@ -214,6 +218,7 @@ jobs:
             echo '${{ inputs.plugins }}' > plugins_fixed.json
           fi
           export_json "$(cat plugins_fixed.json)" "PLUGIN_"
+
       - name: Apply Configurations
         run: |
           chmod +x trunk/custom/scripts/*.sh || true
@@ -227,6 +232,7 @@ jobs:
             echo "CONFIG_FIRMWARE_INCLUDE_OC=y" >> "$CONFIGFILE"
             echo "CONFIG_FIRMWARE_MT7621_OC=${{ inputs.mt7621_oc }}" >> "$CONFIGFILE"
           fi
+
       - name: Apply Nano Optimization
         if: ${{ inputs.nanoversion }}
         run: |
@@ -243,6 +249,49 @@ jobs:
           for m in "${modules[@]}"; do
             sed -i "s/CONFIG_FIRMWARE_INCLUDE_${m}=y/CONFIG_FIRMWARE_INCLUDE_${m}=n/" "$CONFIGFILE"
           done
+
+      - name: Fix AdGuardHome embed patch for v0.107.48
+        run: |
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          patch = (
+              "--- a/main.go\n"
+              "+++ b/main.go\n"
+              "@@ -3,7 +3,9 @@\n"
+              " package main\n"
+              " \n"
+              " import (\n"
+              '-\t"embed"\n'
+              '+\t"archive/zip"\n'
+              '+\t"bytes"\n'
+              '+\t_ "embed"\n'
+              " \t// Embed tzdata in binary.\n"
+              " \t//\n"
+              " \t// See https://github.com/AdguardTeam/AdGuardHome/issues/6758\n"
+              "@@ -16,9 +18,14 @@\n"
+              " // internal directory and the embed package is unable to embed files located\n"
+              " // outside of the same or underlying directory.\n"
+              " \n"
+              "-//go:embed build\n"
+              "-var clientBuildFS embed.FS\n"
+              "+//go:embed embed.zip\n"
+              "+var b []byte\n"
+              " \n"
+              " func main() {\n"
+              "-\thome.Main(clientBuildFS)\n"
+              "+\tf, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))\n"
+              "+\tif err != nil {\n"
+              "+\t\tpanic(err)\n"
+              "+\t}\n"
+              "+\n"
+              "+\thome.Main(f)\n"
+              " }\n"
+          )
+          p = Path("trunk/user/adguardhome/patches/main-embed-unzip.patch")
+          p.write_text(patch)
+          print("patch rewritten for v0.107.48")
+          PYEOF
+
       - name: Build Firmware
         run: |
           make ${{ inputs.target }} TOOLCHAIN=${{ inputs.toolchain }}
