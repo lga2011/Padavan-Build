@@ -148,18 +148,14 @@ jobs:
       - name: Fix CMake compatibility
         run: |
               echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
-
       - name: Fix dosfstools Autotools timestamps
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path("trunk/user/dosfstools/Makefile")
           if not path.is_file():
               raise SystemExit(f"ERROR: {path} not found")
-
           lines = path.read_text().splitlines(keepends=True)
-
           # 检查是否已经添加修复
           if any("touch aclocal.m4 configure Makefile.in" in line for line in lines):
               print("dosfstools Autotools timestamp fix already applied")
@@ -169,34 +165,27 @@ jobs:
                   i for i, line in enumerate(lines)
                   if "--build=$(HOST_BUILD)" in line
               ]
-
               if len(matches) != 1:
                   raise SystemExit(
                       f"ERROR: expected exactly one --build=$(HOST_BUILD), "
                       f"found {len(matches)}"
                   )
-
               # 在 configure 执行后插入 touch
               index = matches[0] + 1
               lines.insert(
                   index,
                   "\t\ttouch aclocal.m4 configure Makefile.in ;\\\n"
               )
-
               path.write_text("".join(lines))
               print("dosfstools Autotools timestamp fix applied")
-
           # 输出修改后的 configure 目标，供 Actions 日志核对
           content = path.read_text()
           start = content.find("\nconfigure:\n")
           end = content.find("\nclean:\n", start)
-
           if start < 0 or end < 0:
               raise SystemExit("ERROR: cannot verify configure target")
-
           print(content[start:end])
           PY
-
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
@@ -204,12 +193,10 @@ jobs:
             bison flex gperf help2man libtool-bin texinfo python3-docutils autopoint gettext ccache \
             autoconf automake liblzma-dev libltdl-dev liblzo2-dev jq
           echo "BUILD_DATE=$(TZ='Asia/Shanghai' date +%Y%m%d)" >> $GITHUB_ENV
-
       - name: Validate Input JSON
         run: |
           jq empty <<< '${{ inputs.plugins }}' || { echo "❌ Invalid plugins JSON"; exit 1; }
           jq empty <<< '${{ inputs.customization }}' || { echo "❌ Invalid customization JSON"; exit 1; }
-
       - name: Export Customization & Plugin Flags
         run: |
           export_json() {
@@ -219,7 +206,6 @@ jobs:
               echo "${PREFIX}${k^^}=$v" >> $GITHUB_ENV
             done
           }
-
           export_json '${{ inputs.customization }}' ""
           if [ "${{ inputs.nanoversion }}" = "true" ]; then
             echo "⚠️ Nano version — all plugins disabled."
@@ -228,23 +214,19 @@ jobs:
             echo '${{ inputs.plugins }}' > plugins_fixed.json
           fi
           export_json "$(cat plugins_fixed.json)" "PLUGIN_"
-
       - name: Apply Configurations
         run: |
           chmod +x trunk/custom/scripts/*.sh || true
           bash trunk/custom/scripts/setip.sh "$LANIP" trunk/user/shared/src/defaults.h trunk/user/www/dict/CN.dict
           bash trunk/custom/scripts/setaccount.sh "$SIGNACCOUNT" "$SIGNPASSWORD" trunk/user/shared/src/defaults.h
           bash trunk/custom/scripts/setwifi.sh "$WIFI2GSSID" "$WIFI2GPSK" "$WIFI5GSSID" "$WIFI5GPSK" trunk/user/shared/src/defaults.h
-
           for key in $(env | grep '^PLUGIN_' | cut -d= -f1); do
             echo "CONFIG_FIRMWARE_INCLUDE_${key#PLUGIN_}=${!key}" >> "$CONFIGFILE"
           done
-
           if [ "${{ inputs.cpufreq }}" = "true" ]; then
             echo "CONFIG_FIRMWARE_INCLUDE_OC=y" >> "$CONFIGFILE"
             echo "CONFIG_FIRMWARE_MT7621_OC=${{ inputs.mt7621_oc }}" >> "$CONFIGFILE"
           fi
-
       - name: Apply Nano Optimization
         if: ${{ inputs.nanoversion }}
         run: |
@@ -261,7 +243,6 @@ jobs:
           for m in "${modules[@]}"; do
             sed -i "s/CONFIG_FIRMWARE_INCLUDE_${m}=y/CONFIG_FIRMWARE_INCLUDE_${m}=n/" "$CONFIGFILE"
           done
-
       - name: Build Firmware
         run: |
           make ${{ inputs.target }} TOOLCHAIN=${{ inputs.toolchain }}
@@ -277,7 +258,6 @@ jobs:
             mv "$f" "trunk/output/${base}${suffix}.trx"
             i=$((i+1))
           done
-
       - uses: actions/upload-artifact@main
         with:
           name: ${{ inputs.target }}-${{ inputs.toolchain }}-${{ env.BUILD_DATE }}
